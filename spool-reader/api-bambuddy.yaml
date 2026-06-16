@@ -29,7 +29,7 @@ globals:
 sensor:
   - platform: template
     id: bb_remaining_weight
-    name: "Poids restant"
+    name: "${lng_remaining_weight}"
     unit_of_measurement: "g"
     icon: mdi:weight-gram
     accuracy_decimals: 0
@@ -122,10 +122,10 @@ script:
                                 lv_obj_add_flag(id(btn_add_bambuddy), LV_OBJ_FLAG_HIDDEN);
                                 ESP_LOGI("bambuddy", "Restant: %.0fg (utilisé: %.0fg)", rw, wu);
                               } else {
-                                lv_label_set_text(id(lbl_remaining), "Poids indisponible");
+                                lv_label_set_text(id(lbl_remaining), "${lng_weight_unavailable}");
                                 lv_obj_set_style_text_color(id(lbl_remaining),
                                   lv_color_hex(id(color_lum) > 0.5f ? 0x000000 : 0xFFFFFF), 0);
-                                lv_label_set_text(id(lbl_detail_remaining), "Poids indisponible");
+                                lv_label_set_text(id(lbl_detail_remaining), "${lng_weight_unavailable}");
                                 ESP_LOGI("bambuddy", "weight_used introuvable");
                               }
 

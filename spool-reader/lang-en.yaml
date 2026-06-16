@@ -1,0 +1,43 @@
+# English UI strings.
+# To use English, include this file as the `language:` package in the main
+# config instead of lang-fr.yaml (see README → Language).
+substitutions:
+  # --- Idle screen ---
+  lng_scan_prompt: "Scan a filament"
+  lng_waiting: "Waiting for a tag..."
+  # --- Filament screen ---
+  lng_details: "Details"
+  lng_add: "Add"
+  lng_close: "Close"
+  # --- Details screen ---
+  lng_type: "Type"
+  lng_color: "Color"
+  lng_hex: "Hex code"
+  lng_nozzle: "Nozzle"
+  lng_weight: "Weight"
+  lng_remaining: "Remaining"
+  lng_back: "Back"
+  # --- Status / messages ---
+  lng_read_error: "Read error"
+  lng_weight_unavailable: "Weight unavailable"
+  lng_brightness: "Brightness"
+  # --- Home Assistant entity names ---
+  lng_remaining_weight: "Remaining weight"
+  lng_entity_filament_type: "Filament type"
+  lng_entity_filament_color: "Filament color"
+  lng_entity_color_name: "Color name"
+  lng_entity_subtype: "Filament subtype"
+  lng_entity_code: "Filament code"
+  lng_entity_variant_id: "Variant ID"
+  lng_entity_card_uid: "Card UID"
+  lng_entity_tray_uid: "Tray UID"
+  lng_entity_production_date: "Production date"
+  lng_entity_last_scan: "Last scan"
+  lng_entity_temp_min: "Nozzle temp min"
+  lng_entity_temp_max: "Nozzle temp max"
+  lng_entity_spool_weight: "Spool weight"
+  lng_entity_nozzle_diam: "Nozzle diameter"
+  lng_entity_spool_width: "Spool width"
+  lng_entity_filament_length: "Filament length"
+  lng_entity_material_density: "Material density"
+  lng_entity_reset_filament: "Reset filament"

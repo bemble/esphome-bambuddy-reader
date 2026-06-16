@@ -85,13 +85,13 @@ lvgl:
             align: CENTER
             y: 25
             width: 220
-            text: "Scanner un filament"
+            text: "${lng_scan_prompt}"
             styles: style_text_primary
         - label:
             align: CENTER
             y: 55
             width: 220
-            text: "En attente d'un tag..."
+            text: "${lng_waiting}"
             styles: style_text_secondary
         - label:
             id: error_label

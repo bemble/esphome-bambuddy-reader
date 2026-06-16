@@ -39,7 +39,7 @@ output:
 light:
   - platform: monochromatic
     output: backlight_output
-    name: "Luminosité"
+    name: "${lng_brightness}"
     id: backlight
     restore_mode: ALWAYS_ON
     entity_category: config
