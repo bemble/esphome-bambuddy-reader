@@ -74,7 +74,7 @@ lvgl:
             widgets:
               - label:
                   align: LEFT_MID
-                  text: "Détails"
+                  text: "${lng_details}"
                   text_color: 0xFFFFFF
                   text_font: font_small
               - label:
@@ -98,7 +98,7 @@ lvgl:
             widgets:
               - label:
                   align: CENTER
-                  text: "Ajouter"
+                  text: "${lng_add}"
                   text_color: 0x00AE42
                   text_font: font_small
         # Bouton Fermer
@@ -115,6 +115,6 @@ lvgl:
             widgets:
               - label:
                   align: CENTER
-                  text: "Fermer"
+                  text: "${lng_close}"
                   text_color: 0x00AE42
                   text_font: font_small

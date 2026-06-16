@@ -118,7 +118,7 @@ bambu_nfc:
       - lvgl.page.show: page_idle
       - lvgl.label.update:
           id: error_label
-          text: "Erreur de lecture"
+          text: "${lng_read_error}"
       - delay: 3s
       - lvgl.label.update:
           id: error_label

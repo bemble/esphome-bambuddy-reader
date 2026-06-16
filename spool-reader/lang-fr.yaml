@@ -1,0 +1,44 @@
+# French UI strings (default language).
+# Selected via the `language:` package include in the main config; swap for
+# lang-en.yaml to switch the whole UI + Home Assistant entity names to English.
+# All user-facing text lives here so adding a language = copying this file.
+substitutions:
+  # --- Idle screen ---
+  lng_scan_prompt: "Scanner un filament"
+  lng_waiting: "En attente d'un tag..."
+  # --- Filament screen ---
+  lng_details: "Détails"
+  lng_add: "Ajouter"
+  lng_close: "Fermer"
+  # --- Details screen ---
+  lng_type: "Type"
+  lng_color: "Couleur"
+  lng_hex: "Code hex"
+  lng_nozzle: "Buse"
+  lng_weight: "Poids"
+  lng_remaining: "Restant"
+  lng_back: "Retour"
+  # --- Status / messages ---
+  lng_read_error: "Erreur de lecture"
+  lng_weight_unavailable: "Poids indisponible"
+  lng_brightness: "Luminosité"
+  # --- Home Assistant entity names ---
+  lng_remaining_weight: "Poids restant"
+  lng_s_filament_type: "Type de filament"
+  lng_s_filament_color: "Couleur du filament"
+  lng_s_color_name: "Nom couleur"
+  lng_s_subtype: "Sous-type filament"
+  lng_s_code: "Code filament"
+  lng_s_variant_id: "Variant ID"
+  lng_s_card_uid: "Card UID"
+  lng_s_tray_uid: "Tray UID"
+  lng_s_production_date: "Date de production"
+  lng_s_last_scan: "Dernier scan"
+  lng_s_temp_min: "Temp min buse"
+  lng_s_temp_max: "Temp max buse"
+  lng_s_spool_weight: "Poids bobine"
+  lng_s_nozzle_diam: "Diamètre buse"
+  lng_s_spool_width: "Largeur bobine"
+  lng_s_filament_length: "Longueur filament"
+  lng_s_material_density: "Densité matériau"
+  lng_s_reset_filament: "Reset filament"

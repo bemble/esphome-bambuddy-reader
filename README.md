@@ -15,7 +15,7 @@ An ESPHome-based NFC spool reader for Bambu Lab filaments, running on a **Wavesh
 - Can add unknown spools to BambuBuddy directly from the device
 - Exposes all filament sensors to Home Assistant via the ESPHome API
 - Backlight control via Home Assistant
-- All the screens are in French, sorry
+- UI and Home Assistant entity names available in **French (default) or English**, selectable via a language pack (see [Language](#language))
 
 ---
 
@@ -144,6 +144,7 @@ wifi:
 captive_portal:
 
 packages:
+  language: !include spool-reader/lang-fr.yaml   # or lang-en.yaml — see Language below
   display: !include spool-reader/hw-display.yaml
   fonts: !include spool-reader/ui-fonts.yaml
   nfc: !include spool-reader/hw-nfc.yaml
@@ -154,6 +155,20 @@ packages:
   page_details: !include spool-reader/page-details.yaml
   triggers: !include spool-reader/pages-triggers.yaml
 ```
+
+### Language
+
+All user-facing text (screen labels and Home Assistant entity names) lives in a
+language pack, selected by the `language:` package include in `spool-reader.yaml`:
+
+```yaml
+packages:
+  language: !include spool-reader/lang-fr.yaml   # French (default)
+  # language: !include spool-reader/lang-en.yaml # English
+```
+
+Swap the include to change the whole UI. To add a language, copy `lang-fr.yaml`
+to `lang-xx.yaml` and translate the values (the keys must stay the same).
 
 ### Flashing
 
@@ -191,6 +206,8 @@ This regenerates `bambu_colors.h` and `bambu_densities.h`. Then recompile and re
 ```
 spool-reader.yaml          # Main ESPHome config
 spool-reader/
+  lang-fr.yaml             # French UI strings (default language)
+  lang-en.yaml             # English UI strings
   hw-display.yaml          # Display & touch hardware config
   hw-nfc.yaml              # NFC hardware & sensor config
   api-bambuddy.yaml        # BambuBuddy HTTP integration
