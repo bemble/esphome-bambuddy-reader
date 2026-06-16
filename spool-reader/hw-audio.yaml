@@ -1,4 +1,4 @@
-## AUDIO — PCM5101 stereo I2S DAC (Waveshare ESP32-S3-Touch-LCD-2.8)
+# AUDIO — PCM5101 stereo I2S DAC (Waveshare ESP32-S3-Touch-LCD-2.8)
 # Onboard DAC (no I2C control, no MCLK) → amp → 2 speakers via the 4-pin JST.
 # Pins are silkscreened by the Waveshare board; verified free vs display+NFC.
 #   BCLK = GPIO48, LRCLK/WS = GPIO38, DOUT = GPIO47
@@ -11,6 +11,12 @@ substitutions:
   sound_good: "good:d=16,o=6,b=170:c,e,g"     # rising major arpeggio = success
   sound_bad: "bad:d=8,o=6,b=140:f,d,f,d"      # high descending buzz = error (o6 so small speakers can reproduce it)
 
+# I2S DAC + speaker + tone player. The PCM5101 is self-clocked, so no MCLK pin
+# is needed. Field names below (i2s_lrclk_pin / i2s_bclk_pin / i2s_dout_pin,
+# speaker platform: i2s_audio) require ESPHome 2023.5+; tested on 2026.5.
+# Docs: https://esphome.io/components/i2s_audio.html
+#       https://esphome.io/components/speaker/i2s_audio.html
+#       https://esphome.io/components/rtttl.html
 i2s_audio:
   - id: i2s_dac
     i2s_lrclk_pin: GPIO38
