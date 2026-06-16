@@ -15,51 +15,51 @@ bambu_nfc:
   update_interval: 1s
   filament_type:
     id: filament_type_sens
-    name: "${lng_s_filament_type}"
+    name: "${lng_entity_filament_type}"
   filament_color:
     id: filament_color_sens
-    name: "${lng_s_filament_color}"
+    name: "${lng_entity_filament_color}"
   filament_color_name:
     id: filament_color_name_sens
-    name: "${lng_s_color_name}"
+    name: "${lng_entity_color_name}"
   filament_subtype:
     id: filament_subtype_sens
-    name: "${lng_s_subtype}"
+    name: "${lng_entity_subtype}"
   tray_info_idx:
     id: tray_info_idx_sens
-    name: "${lng_s_code}"
+    name: "${lng_entity_code}"
   variant_id:
     id: variant_id_sens
-    name: "${lng_s_variant_id}"
+    name: "${lng_entity_variant_id}"
   card_uid:
     id: card_uid_sens
-    name: "${lng_s_card_uid}"
+    name: "${lng_entity_card_uid}"
   tray_uid:
     id: tray_uid_sens
-    name: "${lng_s_tray_uid}"
+    name: "${lng_entity_tray_uid}"
   production_date:
-    name: "${lng_s_production_date}"
+    name: "${lng_entity_production_date}"
   last_scan_date:
     id: last_scan_date_sens
-    name: "${lng_s_last_scan}"
+    name: "${lng_entity_last_scan}"
   min_hotend_temp:
     id: min_hotend_temp_sens
-    name: "${lng_s_temp_min}"
+    name: "${lng_entity_temp_min}"
   max_hotend_temp:
     id: max_hotend_temp_sens
-    name: "${lng_s_temp_max}"
+    name: "${lng_entity_temp_max}"
   spool_weight:
     id: spool_weight_sens
-    name: "${lng_s_spool_weight}"
+    name: "${lng_entity_spool_weight}"
   nozzle_diameter:
-    name: "${lng_s_nozzle_diam}"
+    name: "${lng_entity_nozzle_diam}"
   spool_width:
-    name: "${lng_s_spool_width}"
+    name: "${lng_entity_spool_width}"
   filament_length:
     id: filament_length_sens
-    name: "${lng_s_filament_length}"
+    name: "${lng_entity_filament_length}"
   material_density:
     id: material_density_sens
-    name: "${lng_s_material_density}"
+    name: "${lng_entity_material_density}"
   reset:
-    name: "${lng_s_reset_filament}"
+    name: "${lng_entity_reset_filament}"
