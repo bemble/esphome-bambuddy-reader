@@ -1,6 +1,12 @@
 http_request:
   useragent: "ESPHome/BambuReader"
-  timeout: 10s
+  # http_request is blocking and runs in the main loop task. bambuddy_sync fires
+  # a POST and a chained GET sequentially on every successful read, so the worst
+  # case is 2 x timeout in a single loop pass. The ESP-IDF task watchdog trips at
+  # ~5s, so a 10s timeout meant one network stall starved loopTask past the
+  # watchdog -> reboot loop after a scan ("task_wdt: loopTask (CPU 1) did not
+  # reset the watchdog in time"). 2s keeps 2 x timeout (4s) under the watchdog.
+  timeout: 2s
 
 esphome:
   on_boot:
@@ -40,7 +46,11 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return std::string("${bambuddy_url}").find("http") == 0;'
+            and:
+              # Skip the sync when WiFi is down: a blocking HTTP attempt while
+              # disconnected is what most often starves the loop task.
+              - wifi.connected:
+              - lambda: 'return std::string("${bambuddy_url}").find("http") == 0;'
           then:
             - lambda: |-
                 id(bb_tray_uid) = id(tray_uid_sens).state;
