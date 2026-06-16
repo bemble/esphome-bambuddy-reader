@@ -1,0 +1,43 @@
+## AUDIO — PCM5101 stereo I2S DAC (Waveshare ESP32-S3-Touch-LCD-2.8)
+# Onboard DAC (no I2C control, no MCLK) → amp → 2 speakers via the 4-pin JST.
+# Pins are silkscreened by the Waveshare board; verified free vs display+NFC.
+#   BCLK = GPIO48, LRCLK/WS = GPIO38, DOUT = GPIO47
+# Drop-in: add `audio: !include spool-reader/hw-audio.yaml` to the `packages:`
+# list (before `triggers:`) in spool-reader.yaml. Nothing else to edit — the
+# tone hooks below merge themselves onto the existing NFC triggers.
+
+substitutions:
+  # RTTTL ringtones. Override in the root substitutions block to retune.
+  sound_good: "good:d=16,o=6,b=170:c,e,g"     # rising major arpeggio = success
+  sound_bad: "bad:d=8,o=6,b=140:f,d,f,d"      # high descending buzz = error (o6 so small speakers can reproduce it)
+
+i2s_audio:
+  - id: i2s_dac
+    i2s_lrclk_pin: GPIO38
+    i2s_bclk_pin: GPIO48
+
+speaker:
+  - platform: i2s_audio
+    id: spool_speaker
+    i2s_audio_id: i2s_dac
+    dac_type: external
+    i2s_dout_pin: GPIO47
+    channel: stereo
+
+rtttl:
+  id: spool_buzzer
+  speaker: spool_speaker
+  gain: 0.6
+
+# Self-contained hooks: this package owns its trigger reactions so the core
+# pages-triggers.yaml has NO dependency on audio. ESPHome merges these
+# on_bambu_* action lists into the core ones (this package is included before
+# `triggers` in the root, so the tones play first). Without this package the
+# core triggers compile and run exactly as before — nothing to break.
+bambu_nfc:
+  on_bambu_success:
+    then:
+      - rtttl.play: "${sound_good}"
+  on_bambu_error:
+    then:
+      - rtttl.play: "${sound_bad}"

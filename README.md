@@ -15,6 +15,7 @@ An ESPHome-based NFC spool reader for Bambu Lab filaments, running on a **Wavesh
 - Can add unknown spools to BambuBuddy directly from the device
 - Exposes all filament sensors to Home Assistant via the ESPHome API
 - Backlight control via Home Assistant
+- Optional audio feedback: a chime on a successful scan and a buzz on a failed read, via the board's onboard PCM5101 I²S DAC
 - All the screens are in French, sorry
 
 ---
@@ -55,6 +56,15 @@ An ESPHome-based NFC spool reader for Bambu Lab filaments, running on a **Wavesh
 | MOSI | GPIO15 |
 | MISO | GPIO44 |
 | CS | GPIO43 |
+
+#### Audio I²S (PCM5101, optional)
+The Waveshare 2.8" board has an onboard PCM5101 I²S DAC + amplifier feeding a small speaker connector. Used only if you enable the optional audio package (see below).
+
+| Signal | GPIO |
+|--------|------|
+| BCLK | GPIO48 |
+| LRCLK (WS) | GPIO38 |
+| DOUT | GPIO47 |
 
 ### PN532 NFC Reader — Jumper Configuration
 
@@ -155,6 +165,29 @@ packages:
   triggers: !include spool-reader/pages-triggers.yaml
 ```
 
+### Audio (optional)
+
+The Waveshare 2.8" board includes a PCM5101 I²S DAC, an amplifier, and a small speaker connector. To get a chime on a successful scan and a buzz on a failed read, add one line to the `packages:` block above — anywhere **before** `triggers:`:
+
+```yaml
+packages:
+  # ...
+  audio: !include spool-reader/hw-audio.yaml
+  triggers: !include spool-reader/pages-triggers.yaml
+```
+
+That's the only change required. `hw-audio.yaml` is fully self-contained: it sets up the I²S DAC, speaker, and an [`rtttl`](https://esphome.io/components/rtttl.html) tone player, and it hooks its own actions onto the existing `on_bambu_success` / `on_bambu_error` triggers (ESPHome merges these onto the core ones — including the package before `triggers:` makes the tones play first). If you don't add the line, the firmware builds and behaves exactly as before.
+
+Retune the two ringtones by overriding their substitutions in your root config:
+
+```yaml
+substitutions:
+  sound_good: "good:d=16,o=6,b=170:c,e,g"   # rising arpeggio
+  sound_bad: "bad:d=8,o=6,b=140:f,d,f,d"    # descending buzz
+```
+
+> Tip: keep tones in octave 6+ — small speakers can't reproduce low frequencies, so an octave-4/5 tone will sound very quiet.
+
 ### Flashing
 
 ```bash
@@ -193,6 +226,7 @@ spool-reader.yaml          # Main ESPHome config
 spool-reader/
   hw-display.yaml          # Display & touch hardware config
   hw-nfc.yaml              # NFC hardware & sensor config
+  hw-audio.yaml            # Optional PCM5101 I2S audio + scan tones
   api-bambuddy.yaml        # BambuBuddy HTTP integration
   ui-fonts.yaml            # LVGL font declarations
   ui-styles.yaml           # LVGL styles
