@@ -79,8 +79,8 @@ struct State {
     if (spool.location_id != 0 || !spool.location.empty()) {
       bool found = false;
       for (size_t i = 1; i < values.size(); ++i) {
-        if ((spool.location_id != 0 && values[i].id == spool.location_id) ||
-            (spool.location_id == 0 && values[i].name == spool.location)) {
+        if ((spool.location_id > 0 && values[i].id > 0 && values[i].id == spool.location_id) ||
+            ((spool.location_id == 0 || values[i].id < 0) && values[i].name == spool.location)) {
           current = i;
           found = true;
           break;
@@ -113,7 +113,8 @@ struct State {
     return index < locations.size() &&
            ((spool.location_id != 0 && spool.location_id == locations[index].id) ||
             (spool.location_id == 0 && spool.location.empty() && locations[index].id == 0) ||
-            (spool.location_id == 0 && !spool.location.empty() && spool.location == locations[index].name));
+            ((spool.location_id == 0 || locations[index].id < 0) &&
+             !spool.location.empty() && spool.location == locations[index].name));
   }
 };
 

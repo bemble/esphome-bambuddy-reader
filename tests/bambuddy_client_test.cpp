@@ -203,10 +203,12 @@ int main() {
   finish(client);
   assert(state.screen == Screen::INFO && !state.error.empty());
 
-  scenario(R"([{"id":2,"name":"Shelf 2"}])");
+  scenario(R"([{"id":1,"storage_location":"Shelf 2"},{"id":2,"storage_location":"Shelf 1"},{"id":3,"storage_location":"Shelf 2"},{"id":4,"storage_location":null}])");
   assert(client.request(static_cast<int>(Operation::LOCATIONS)));
   finish(client);
-  assert(server.url == "https://example.invalid/api/v1/inventory/locations");
+  assert(server.url == "https://example.invalid/api/v1/spoolman/inventory/spools?include_archived=true");
+  assert(state.locations.size() == 3 && state.locations[1].name == "Shelf 1" &&
+         state.locations[2].name == "Shelf 2");
   while (state.selected != 0)
     state.next_location();
   state.confirm();
@@ -216,7 +218,43 @@ int main() {
   assert(state.screen == Screen::INFO && state.spool.location_id == 0);
   assert(server.url == "https://example.invalid/api/v1/spoolman/inventory/spools/12");
   assert(!deserializeJson(document, server.sent_body));
-  assert(document["location_id"].isNull() && document.size() == 1);
+  assert(document["storage_location"].isNull() && document.size() == 1);
+
+  state.found({12, 99, "PLA", "", "Blue", "Shelf 2", 625});
+  scenario(R"([{"id":1,"storage_location":"Shelf 1"},{"id":2,"storage_location":"Shelf 2"}])");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.selected == 2 && state.current_location(2) && !state.current_location(1));
+  state.next_location();
+  state.next_location();
+  state.confirm();
+  scenario(R"({"id":12,"material":"PLA","label_weight":750,"weight_used":125,"storage_location":"Shelf 1","location_id":null})");
+  assert(client.request(static_cast<int>(Operation::UPDATE)));
+  finish(client);
+  assert(state.screen == Screen::INFO && state.spool.location == "Shelf 1");
+  assert(!deserializeJson(document, server.sent_body));
+  assert(document["storage_location"].as<std::string>() == "Shelf 1" && document.size() == 1);
+
+  scenario(R"([{"id":1,"storage_location":42}])");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.screen == Screen::INFO && !state.error.empty());
+  scenario(R"([{"id":1,"storage_location":"Shelf 1"},{"id":2,"storage_location":"Shelf 2"}])");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.selected == 1 && state.current_location(1));
+  state.next_location();
+  state.confirm();
+  scenario(R"({"id":12,"material":"PLA","label_weight":750,"weight_used":125,"storage_location":"Shelf 1"})");
+  assert(client.request(static_cast<int>(Operation::UPDATE)));
+  finish(client);
+  assert(state.screen == Screen::CONFIRM && !state.error.empty() && state.spool.location == "Shelf 1");
+
+  state.found({12, 0, "PLA", "", "", "", 625});
+  scenario(R"([{"id":1,"storage_location":null},{"id":2,"storage_location":""}])");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.locations.size() == 1 && state.selected == 0 && state.current_location(0));
 
   std::cout << "Async client, cancellation, JSON and mock GET/POST/PATCH tests passed\n";
 }

@@ -110,8 +110,13 @@ The supplied YAML sets `bambuddy_oled.spoolman: true` for Spoolman-managed
 filaments. Set it to `false` for Bambuddy's built-in inventory (the component's
 default). No direct Spoolman URL or credentials are needed: all requests go
 through Bambuddy. Spool reads, creation and updates use
-`/api/v1/spoolman/inventory/spools` in Spoolman mode; the shared location
-catalog remains `/api/v1/inventory/locations`.
+`/api/v1/spoolman/inventory/spools` in Spoolman mode. Storage locations are
+the distinct non-empty `storage_location` strings on those Spoolman spools,
+including archived spools, sorted by name. The reader does not depend on
+Bambuddy's local location catalog being synchronized. Spoolman location updates
+send `storage_location` (the name), not a Bambuddy `location_id`. In built-in
+inventory mode the catalog remains `/api/v1/inventory/locations`, and updates
+use its location IDs.
 
 Spoolman's proxy has no `by-tag` endpoint, so NFC lookup streams the complete
 spool list, matching normalized tray UUID first and chip UID second. It includes
@@ -120,7 +125,12 @@ successfully parsed list with no match offers creation; errors never do.
 Spoolman's extra field `tag` holds the tray UUID: Bambuddy maps its 32-digit
 hex value from `extra.tag` to `tray_uuid` in the proxy response. NFC linking
 through the proxy writes the tray UUID back to that same extra field.
-Spoolman creation requires a subsequent PATCH to link the NFC identifiers
+On Spoolman 0.27 or later, the dedicated tag endpoint also adds both the chip
+UID and tray UUID as native spool tags (type `bambu`), preserving existing tags.
+The reader verifies both identifiers in the returned proxy response.
+New spools receive the comment `Erstellt von Spool-Reader` (`note` in Bambuddy's
+API). Existing comments are not changed during lookup or location updates.
+Spoolman creation requires a subsequent PATCH to `/spools/{id}/tag` to link the NFC identifiers
 because its create schema does not accept them. If linking fails after creation,
 the newly created spool is shown with an explicit error instead of offering
 another creation. Link its NFC identifier manually in Bambuddy before scanning
@@ -154,7 +164,8 @@ selects the current location, and scrolls through all entries in groups of
 three. Inversion highlights the selection; `*` marks the saved location.
 Long names scroll horizontally. The confirmation shows type, color, old
 location, and new location. Selecting the empty entry sends
-`{"location_id": null}` to clear the location.
+`{"storage_location": null}` in Spoolman mode or `{"location_id": null}` in
+built-in inventory mode to clear the location.
 
 HTTP/authentication/JSON/NFC errors are logged and shown on the display.
 Only an unmatched successful lookup (HTTP 404 for the built-in inventory)

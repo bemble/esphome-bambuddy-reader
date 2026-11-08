@@ -39,7 +39,7 @@ class BambuddyOled : public Component {
   static void worker_(void *argument);
   static void perform_(const Request &request, Result &result);
   static bool parse_spool_(const std::string &body, spool_reader::Spool &spool);
-  static std::string body_(spool_reader::Operation operation);
+  static std::string body_(spool_reader::Operation operation, bool spoolman);
   void fail_(const std::string &message, bool disconnected = false);
 
   std::string url_, api_key_;

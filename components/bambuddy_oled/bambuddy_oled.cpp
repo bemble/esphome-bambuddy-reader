@@ -37,11 +37,16 @@ void BambuddyOled::fail_(const std::string &message, bool disconnected) {
   }
 }
 
-std::string BambuddyOled::body_(Operation operation) {
+std::string BambuddyOled::body_(Operation operation, bool spoolman) {
   if (operation == Operation::UPDATE) {
-    return json::build_json([](JsonObject root) {
+    return json::build_json([spoolman](JsonObject root) {
       const auto &location = state.locations[state.selected];
-      if (location.id == 0)
+      if (spoolman) {
+        if (location.name.empty())
+          root["storage_location"] = nullptr;
+        else
+          root["storage_location"] = location.name;
+      } else if (location.id == 0)
         root["location_id"] = nullptr;
       else
         root["location_id"] = location.id;
@@ -105,10 +110,12 @@ bool BambuddyOled::request(int requested) {
             "&tag_uid=" + state.scan.card_uid;
       break;
     case Operation::CREATE: url = base + "/spools"; break;
-    case Operation::LOCATIONS: url = locations_url; break;
+    case Operation::LOCATIONS:
+      url = spoolman_ ? base + "/spools?include_archived=true" : locations_url;
+      break;
     case Operation::UPDATE: url = base + "/spools/" + std::to_string(state.spool.id); break;
   }
-  auto request = std::make_unique<Request>(Request{this, operation, state.generation, url, body_(operation), api_key_,
+  auto request = std::make_unique<Request>(Request{this, operation, state.generation, url, body_(operation, spoolman_), api_key_,
                                                  spoolman_, state.scan.tray_uid, state.scan.card_uid});
   state.error.clear();
   state.busy = true;
@@ -210,9 +217,19 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
       }
     }
     if (request.operation == Operation::LOCATIONS) {
-      if (!root["name"].is<const char *>() || root["name"].as<std::string>().empty())
-        return false;
-      result.locations.push_back({root["id"].as<int>(), root["name"].as<std::string>()});
+      if (request.spoolman) {
+        if (!root["storage_location"].isNull() && !root["storage_location"].is<const char *>())
+          return false;
+        const auto name = root["storage_location"].is<const char *>() ?
+                          root["storage_location"].as<std::string>() : "";
+        if (!name.empty() && std::none_of(result.locations.begin(), result.locations.end(),
+                                         [&](const Location &location) { return location.name == name; }))
+          result.locations.push_back({-1, name});
+      } else {
+        if (!root["name"].is<const char *>() || root["name"].as<std::string>().empty())
+          return false;
+        result.locations.push_back({root["id"].as<int>(), root["name"].as<std::string>()});
+      }
     }
     ++result.count;
     return true;
@@ -252,6 +269,9 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
     result.error = "Antwort unvollstaendig";
     return;
   }
+  if (request.operation == Operation::LOCATIONS && request.spoolman)
+    std::sort(result.locations.begin(), result.locations.end(),
+              [](const Location &a, const Location &b) { return a.name < b.name; });
   if (!array && !parse_spool_(body, result.spool))
     result.error = "Ungueltige Spulendaten";
   if (request.link_tag && result.error.empty()) {
@@ -346,7 +366,9 @@ void BambuddyOled::loop() {
     return;
   }
   if (result->operation == Operation::UPDATE &&
-      (result->spool.id != state.spool.id || result->spool.location_id != state.locations[state.selected].id)) {
+      (result->spool.id != state.spool.id ||
+       (spoolman_ ? result->spool.location != state.locations[state.selected].name :
+                    result->spool.location_id != state.locations[state.selected].id))) {
     fail_("Ort nicht uebernommen");
     return;
   }
