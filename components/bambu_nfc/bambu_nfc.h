@@ -11,6 +11,8 @@
 #include "bambu_colors.h"
 #include "bambu_densities.h"
 
+#include <span>
+
 namespace esphome {
 namespace bambu_nfc {
 
@@ -61,9 +63,9 @@ class BambuNfc : public pn532::PN532,
 
  protected:
   bool is_read_ready() override;
-  bool write_data(const std::vector<uint8_t> &data) override;
-  bool read_data(std::vector<uint8_t> &data, uint8_t len) override;
-  bool read_response(uint8_t command, std::vector<uint8_t> &data) override;
+  bool write_data(std::span<const uint8_t> data) override;
+  bool read_data(pn532::PN532Frame &data, size_t len) override;
+  bool read_response(uint8_t command, pn532::PN532Frame &data) override;
 
   bool read_bambu_data_(nfc::NfcTagUid &uid);
   bool derive_bambu_keys_(const uint8_t *uid, size_t uid_len, uint8_t *keys_out);
