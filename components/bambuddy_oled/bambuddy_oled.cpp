@@ -56,6 +56,7 @@ std::string BambuddyOled::body_(Operation operation) {
     root["color_name"] = scan.color_name;
     root["rgba"] = scan.color.substr(1) + "FF";
     root["brand"] = "Bambu Lab";
+    root["note"] = "Erstellt von Spool-Reader";
     root["label_weight"] = static_cast<int>(scan.label_weight);
     root["slicer_filament"] = scan.filament_code;
     root["slicer_filament_name"] = "Bambu " + scan.material + (scan.subtype.empty() ? "" : " " + scan.subtype);
@@ -256,7 +257,8 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
   if (request.link_tag && result.error.empty()) {
     JsonDocument document;
     if (deserializeJson(document, body) ||
-        normalized_tag(document["tray_uuid"].as<std::string>()) != normalized_tag(request.tray_uid))
+        normalized_tag(document["tray_uuid"].as<std::string>()) != normalized_tag(request.tray_uid) ||
+        normalized_tag(document["tag_uid"].as<std::string>()) != normalized_tag(request.card_uid))
       result.error = "NFC-Link nicht uebernommen";
   }
   if (request.operation == Operation::CREATE && request.spoolman && result.error.empty()) {
@@ -268,7 +270,7 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
     serializeJson(document, link_body);
     Request link = request;
     link.operation = Operation::UPDATE;
-    link.url += "/" + std::to_string(result.spool.id);
+    link.url += "/" + std::to_string(result.spool.id) + "/tag";
     link.body = std::move(link_body);
     link.link_tag = true;
     Result linked;

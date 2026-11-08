@@ -107,6 +107,7 @@ int main() {
   assert(document["label_weight"].as<int>() == 750 && document["rgba"].as<std::string>() == "123456FF");
   assert(document["tag_uid"].as<std::string>() == scan.card_uid);
   assert(document["tray_uuid"].as<std::string>() == scan.tray_uid);
+  assert(document["note"].as<std::string>() == "Erstellt von Spool-Reader");
 
   state.scanned(scan);
   scenario("{}", 500);
@@ -183,9 +184,12 @@ int main() {
   assert(state.screen == Screen::INFO && state.error.empty() && state.spool.id == 12);
   assert(server.method == HTTP_METHOD_PATCH);
   assert(server.urls[server.urls.size() - 2] == "https://example.invalid/api/v1/spoolman/inventory/spools");
-  assert(server.url == "https://example.invalid/api/v1/spoolman/inventory/spools/12");
+  assert(!deserializeJson(document, server.bodies[server.bodies.size() - 2]));
+  assert(document["note"].as<std::string>() == "Erstellt von Spool-Reader");
+  assert(server.url == "https://example.invalid/api/v1/spoolman/inventory/spools/12/tag");
   assert(!deserializeJson(document, server.sent_body));
   assert(document["tray_uuid"].as<std::string>() == scan.tray_uid);
+  assert(document["tag_uid"].as<std::string>() == scan.card_uid);
 
   scenario(spool);
   state.screen = Screen::NOT_FOUND;
@@ -193,11 +197,18 @@ int main() {
   finish(client);
   assert(state.screen == Screen::INFO && state.spool.id == 12 && !state.error.empty());
 
+  scenario(R"({"id":12,"material":"PLA","label_weight":750,"weight_used":125,"tray_uuid":"00112233445566778899aabbccddeeff"})");
+  state.screen = Screen::NOT_FOUND;
+  assert(client.request(static_cast<int>(Operation::CREATE)));
+  finish(client);
+  assert(state.screen == Screen::INFO && !state.error.empty());
+
   scenario(R"([{"id":2,"name":"Shelf 2"}])");
   assert(client.request(static_cast<int>(Operation::LOCATIONS)));
   finish(client);
   assert(server.url == "https://example.invalid/api/v1/inventory/locations");
-  state.next_location();
+  while (state.selected != 0)
+    state.next_location();
   state.confirm();
   scenario(tagged);
   assert(client.request(static_cast<int>(Operation::UPDATE)));

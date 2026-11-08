@@ -71,6 +71,7 @@ struct MockServer {
   bool blocked{false}, fail_open{false};
   esp_http_client_method_t method{HTTP_METHOD_GET};
   std::vector<std::string> urls;
+  std::vector<std::string> bodies;
 };
 inline MockServer server;
 struct esp_http_client {
@@ -84,6 +85,7 @@ inline esp_http_client_handle_t esp_http_client_init(const esp_http_client_confi
   std::lock_guard<std::mutex> lock(server.mutex);
   server.url = config->url;
   server.urls.push_back(server.url);
+  server.bodies.emplace_back();
   server.method = config->method;
   server.sent_body.clear();
   return new esp_http_client{server.response, 0, server.status};
@@ -98,6 +100,7 @@ inline int esp_http_client_open(esp_http_client_handle_t, size_t) {
 inline int esp_http_client_write(esp_http_client_handle_t, const char *data, size_t size) {
   std::lock_guard<std::mutex> lock(server.mutex);
   server.sent_body.append(data, size);
+  server.bodies.back().append(data, size);
   return static_cast<int>(size);
 }
 inline int64_t esp_http_client_fetch_headers(esp_http_client_handle_t client) { return client->response.size(); }
