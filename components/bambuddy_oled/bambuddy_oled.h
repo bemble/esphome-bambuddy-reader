@@ -11,6 +11,7 @@ class BambuddyOled : public Component {
  public:
   void set_url(const std::string &url) { url_ = url; }
   void set_api_key(const std::string &key) { api_key_ = key; }
+  void set_spoolman(bool spoolman) { spoolman_ = spoolman; }
   void loop() override;
   void dump_config() override;
   bool request(int operation);
@@ -22,6 +23,9 @@ class BambuddyOled : public Component {
     spool_reader::Operation operation;
     uint32_t generation;
     std::string url, body, api_key;
+    bool spoolman;
+    std::string tray_uid, card_uid;
+    bool link_tag{false};
   };
   struct Result {
     spool_reader::Operation operation;
@@ -41,6 +45,7 @@ class BambuddyOled : public Component {
   std::string url_, api_key_;
   std::atomic<Result *> completed_{nullptr};
   bool in_flight_{false};
+  bool spoolman_{false};
 };
 
 }  // namespace esphome::bambuddy_oled

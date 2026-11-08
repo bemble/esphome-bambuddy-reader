@@ -8,11 +8,21 @@
 #include "freertos/task.h"
 
 #include <memory>
+#include <cctype>
 
 namespace esphome::bambuddy_oled {
 
 using namespace spool_reader;
 static const char *const TAG = "bambuddy";
+
+static std::string normalized_tag(std::string tag) {
+  tag.erase(std::remove_if(tag.begin(), tag.end(), [](unsigned char c) {
+    return c == ':' || c == '-' || std::isspace(c);
+  }), tag.end());
+  for (char &c : tag)
+    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  return tag;
+}
 
 void BambuddyOled::dump_config() {
   ESP_LOGCONFIG(TAG, "Asynchronous Bambuddy OLED inventory client");
@@ -83,19 +93,22 @@ bool BambuddyOled::request(int requested) {
   std::string base = url_;
   while (!base.empty() && base.back() == '/')
     base.pop_back();
-  base += "/api/v1/inventory";
+  const std::string locations_url = base + "/api/v1/inventory/locations";
+  base += spoolman_ ? "/api/v1/spoolman/inventory" : "/api/v1/inventory";
   std::string url;
   switch (operation) {
     case Operation::COUNT: url = base + "/spools?include_archived=true"; break;
     case Operation::LOOKUP:
-      url = base + "/spools/by-tag?include_archived=true&tray_uuid=" + state.scan.tray_uid +
+      url = spoolman_ ? base + "/spools?include_archived=true" :
+            base + "/spools/by-tag?include_archived=true&tray_uuid=" + state.scan.tray_uid +
             "&tag_uid=" + state.scan.card_uid;
       break;
     case Operation::CREATE: url = base + "/spools"; break;
-    case Operation::LOCATIONS: url = base + "/locations"; break;
+    case Operation::LOCATIONS: url = locations_url; break;
     case Operation::UPDATE: url = base + "/spools/" + std::to_string(state.spool.id); break;
   }
-  auto request = std::make_unique<Request>(Request{this, operation, state.generation, url, body_(operation), api_key_});
+  auto request = std::make_unique<Request>(Request{this, operation, state.generation, url, body_(operation), api_key_,
+                                                 spoolman_, state.scan.tray_uid, state.scan.card_uid});
   state.error.clear();
   state.busy = true;
   in_flight_ = true;
@@ -176,6 +189,7 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
     return;
   }
 
+  int match_rank = 0;
   ObjectArrayParser parser([&](const std::string &object) {
     JsonDocument document;
     if (deserializeJson(document, object) || !document.is<JsonObject>())
@@ -183,6 +197,17 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
     JsonObject root = document.as<JsonObject>();
     if (!root["id"].is<int>() || root["id"].as<int>() <= 0)
       return false;
+    if (request.operation == Operation::LOOKUP && request.spoolman) {
+      const auto tray = normalized_tag(root["tray_uuid"].is<const char *>() ? root["tray_uuid"].as<std::string>() : "");
+      const auto card = normalized_tag(root["tag_uid"].is<const char *>() ? root["tag_uid"].as<std::string>() : "");
+      int rank = !request.tray_uid.empty() && tray == normalized_tag(request.tray_uid) ? 2 :
+                 !request.card_uid.empty() && card == normalized_tag(request.card_uid) ? 1 : 0;
+      if (rank > 0 && (rank > match_rank || (rank == match_rank && root["id"].as<int>() < result.spool.id))) {
+        if (!parse_spool_(object, result.spool))
+          return false;
+        match_rank = rank;
+      }
+    }
     if (request.operation == Operation::LOCATIONS) {
       if (!root["name"].is<const char *>() || root["name"].as<std::string>().empty())
         return false;
@@ -191,7 +216,8 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
     ++result.count;
     return true;
   });
-  const bool array = request.operation == Operation::COUNT || request.operation == Operation::LOCATIONS;
+  const bool array = request.operation == Operation::COUNT || request.operation == Operation::LOCATIONS ||
+                     (request.operation == Operation::LOOKUP && request.spoolman);
   std::string body;
   char buffer[512];
   TickType_t last_data = xTaskGetTickCount();
@@ -227,6 +253,34 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
   }
   if (!array && !parse_spool_(body, result.spool))
     result.error = "Ungueltige Spulendaten";
+  if (request.link_tag && result.error.empty()) {
+    JsonDocument document;
+    if (deserializeJson(document, body) ||
+        normalized_tag(document["tray_uuid"].as<std::string>()) != normalized_tag(request.tray_uid))
+      result.error = "NFC-Link nicht uebernommen";
+  }
+  if (request.operation == Operation::CREATE && request.spoolman && result.error.empty()) {
+    // Spoolman's create schema ignores NFC fields; link the new spool explicitly.
+    JsonDocument document;
+    document["tray_uuid"] = request.tray_uid;
+    document["tag_uid"] = request.card_uid;
+    std::string link_body;
+    serializeJson(document, link_body);
+    Request link = request;
+    link.operation = Operation::UPDATE;
+    link.url += "/" + std::to_string(result.spool.id);
+    link.body = std::move(link_body);
+    link.link_tag = true;
+    Result linked;
+    guard.reset();
+    perform_(link, linked);
+    if (!linked.error.empty() || linked.spool.id != result.spool.id) {
+      result.error = "Spule erstellt, NFC-Link fehlt";
+      ESP_LOGW(TAG, "Created spool %d, NFC linking failed: %s", result.spool.id, linked.error.c_str());
+    } else {
+      result.spool = std::move(linked.spool);
+    }
+  }
 }
 
 void BambuddyOled::worker_(void *argument) {
@@ -258,7 +312,8 @@ void BambuddyOled::loop() {
   state.connected = result->status >= 200 && result->status < 300;
   if (result->error.empty())
     state.error.clear();
-  if (result->operation == Operation::LOOKUP && result->status == 404 && result->error.empty()) {
+  if (result->operation == Operation::LOOKUP && result->error.empty() &&
+      (result->status == 404 || (spoolman_ && result->status == 200 && result->spool.id == 0))) {
     state.connected = true;
     state.create_uncertain = false;
     state.screen = Screen::NOT_FOUND;
@@ -269,8 +324,12 @@ void BambuddyOled::loop() {
       state.count = -1;
     if (result->operation == Operation::CREATE) {
       state.count = -1;
-      state.create_uncertain = true;
-      state.screen = Screen::SCAN;
+      if (result->spool.id > 0) {
+        state.found(std::move(result->spool));
+      } else {
+        state.create_uncertain = true;
+        state.screen = Screen::SCAN;
+      }
     }
     fail_(result->error, !state.connected || result->status == 0);
     return;

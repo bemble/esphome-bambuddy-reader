@@ -146,5 +146,66 @@ int main() {
   assert(state.screen == Screen::HOME && state.scan.card_uid.empty() && state.spool.id == 0);
   assert(state.count == 0 && !state.busy);
 
+  client.set_spoolman(true);
+  state.scanned(scan);
+  const std::string tagged = R"({"id":12,"material":"PLA","label_weight":750,"weight_used":125,"location_id":null,"storage_location":null,"tray_uuid":"00112233445566778899aabbccddeeff","tag_uid":"11223344"})";
+  const std::string fallback = R"({"id":5,"material":"PETG","label_weight":1000,"weight_used":0,"tag_uid":"11:22:33:44"})";
+  scenario("[" + fallback + "," + tagged + "]");
+  assert(client.request(static_cast<int>(Operation::LOOKUP)));
+  finish(client);
+  assert(state.spool.id == 12 && state.spool.remaining == 625);
+  assert(server.url == "https://example.invalid/api/v1/spoolman/inventory/spools?include_archived=true");
+  scenario("[" + fallback + "]");
+  state.scanned(scan);
+  assert(client.request(static_cast<int>(Operation::LOOKUP)));
+  finish(client);
+  assert(state.spool.id == 5);
+
+  scenario("[]");
+  state.scanned(scan);
+  assert(client.request(static_cast<int>(Operation::LOOKUP)));
+  finish(client);
+  assert(state.screen == Screen::NOT_FOUND && state.connected);
+  scenario("[");
+  state.scanned(scan);
+  assert(client.request(static_cast<int>(Operation::LOOKUP)));
+  finish(client);
+  assert(state.screen == Screen::SCAN && !state.error.empty());
+
+  scenario("[]");
+  assert(client.request(static_cast<int>(Operation::COUNT)));
+  finish(client);
+  assert(state.count == 0 && server.url.find("/spoolman/inventory/spools") != std::string::npos);
+  scenario(tagged);
+  state.screen = Screen::NOT_FOUND;
+  assert(client.request(static_cast<int>(Operation::CREATE)));
+  finish(client);
+  assert(state.screen == Screen::INFO && state.error.empty() && state.spool.id == 12);
+  assert(server.method == HTTP_METHOD_PATCH);
+  assert(server.urls[server.urls.size() - 2] == "https://example.invalid/api/v1/spoolman/inventory/spools");
+  assert(server.url == "https://example.invalid/api/v1/spoolman/inventory/spools/12");
+  assert(!deserializeJson(document, server.sent_body));
+  assert(document["tray_uuid"].as<std::string>() == scan.tray_uid);
+
+  scenario(spool);
+  state.screen = Screen::NOT_FOUND;
+  assert(client.request(static_cast<int>(Operation::CREATE)));
+  finish(client);
+  assert(state.screen == Screen::INFO && state.spool.id == 12 && !state.error.empty());
+
+  scenario(R"([{"id":2,"name":"Shelf 2"}])");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(server.url == "https://example.invalid/api/v1/inventory/locations");
+  state.next_location();
+  state.confirm();
+  scenario(tagged);
+  assert(client.request(static_cast<int>(Operation::UPDATE)));
+  finish(client);
+  assert(state.screen == Screen::INFO && state.spool.location_id == 0);
+  assert(server.url == "https://example.invalid/api/v1/spoolman/inventory/spools/12");
+  assert(!deserializeJson(document, server.sent_body));
+  assert(document["location_id"].isNull() && document.size() == 1);
+
   std::cout << "Async client, cancellation, JSON and mock GET/POST/PATCH tests passed\n";
 }

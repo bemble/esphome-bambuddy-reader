@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace ArduinoJson;
 
@@ -69,6 +70,7 @@ struct MockServer {
   int status{200};
   bool blocked{false}, fail_open{false};
   esp_http_client_method_t method{HTTP_METHOD_GET};
+  std::vector<std::string> urls;
 };
 inline MockServer server;
 struct esp_http_client {
@@ -81,6 +83,7 @@ inline esp_http_client_handle_t esp_http_client_init(const esp_http_client_confi
   assert(config->timeout_ms == 10000 && config->crt_bundle_attach != nullptr);
   std::lock_guard<std::mutex> lock(server.mutex);
   server.url = config->url;
+  server.urls.push_back(server.url);
   server.method = config->method;
   server.sent_body.clear();
   return new esp_http_client{server.response, 0, server.status};

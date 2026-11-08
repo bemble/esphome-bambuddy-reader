@@ -6,6 +6,7 @@ DEPENDENCIES = ["esp32", "http_request"]
 AUTO_LOAD = ["json"]
 
 CONF_API_KEY = "api_key"
+CONF_SPOOLMAN = "spoolman"
 namespace = cg.esphome_ns.namespace("bambuddy_oled")
 BambuddyOled = namespace.class_("BambuddyOled", cg.Component)
 
@@ -14,6 +15,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.GenerateID(): cv.declare_id(BambuddyOled),
         cv.Required(CONF_URL): cv.url,
         cv.Optional(CONF_API_KEY, default=""): cv.string_strict,
+        cv.Optional(CONF_SPOOLMAN, default=False): cv.boolean,
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -23,3 +25,4 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_url(config[CONF_URL]))
     cg.add(var.set_api_key(config[CONF_API_KEY]))
+    cg.add(var.set_spoolman(config[CONF_SPOOLMAN]))
