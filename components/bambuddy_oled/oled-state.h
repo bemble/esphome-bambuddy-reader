@@ -73,7 +73,7 @@ struct State {
     screen = Screen::INFO;
   }
 
-  bool set_locations(std::vector<Location> values) {
+  bool set_locations(std::vector<Location> values, bool current_excluded = false) {
     values.insert(values.begin(), {0, ""});
     size_t current = 0;
     if (spool.location_id != 0 || !spool.location.empty()) {
@@ -86,7 +86,7 @@ struct State {
           break;
         }
       }
-      if (!found)
+      if (!found && !current_excluded)
         return false;
     }
     locations = std::move(values);

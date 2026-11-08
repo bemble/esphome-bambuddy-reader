@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <cctype>
+#include <regex.h>
 
 namespace esphome::bambuddy_oled {
 
@@ -116,7 +117,8 @@ bool BambuddyOled::request(int requested) {
     case Operation::UPDATE: url = base + "/spools/" + std::to_string(state.spool.id); break;
   }
   auto request = std::make_unique<Request>(Request{this, operation, state.generation, url, body_(operation, spoolman_), api_key_,
-                                                 spoolman_, state.scan.tray_uid, state.scan.card_uid});
+                                                 spoolman_, state.scan.tray_uid, state.scan.card_uid, false,
+                                                 location_exclude_regex_, state.spool.location});
   state.error.clear();
   state.busy = true;
   in_flight_ = true;
@@ -157,6 +159,20 @@ bool BambuddyOled::parse_spool_(const std::string &body, Spool &spool) {
 }
 
 void BambuddyOled::perform_(const Request &request, Result &result) {
+  auto free_regex = [](regex_t *regex) { regfree(regex); delete regex; };
+  std::unique_ptr<regex_t, decltype(free_regex)> filter(nullptr, free_regex);
+  if (request.operation == Operation::LOCATIONS && !request.location_exclude_regex.empty()) {
+    auto regex = std::make_unique<regex_t>();
+    int error = regcomp(regex.get(), request.location_exclude_regex.c_str(), REG_EXTENDED | REG_ICASE | REG_NOSUB);
+    if (error != 0) {
+      char message[128];
+      regerror(error, regex.get(), message, sizeof(message));
+      ESP_LOGW(TAG, "Invalid location_exclude_regex: %s", message);
+      result.error = "Ungueltiger Orts-Regex";
+      return;
+    }
+    filter.reset(regex.release());
+  }
   esp_http_client_config_t config{};
   config.url = request.url.c_str();
   config.timeout_ms = 10000;
@@ -272,6 +288,13 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
   if (request.operation == Operation::LOCATIONS && request.spoolman)
     std::sort(result.locations.begin(), result.locations.end(),
               [](const Location &a, const Location &b) { return a.name < b.name; });
+  if (filter) {
+    result.current_location_excluded = !request.current_location.empty() &&
+        regexec(filter.get(), request.current_location.c_str(), 0, nullptr, 0) == 0;
+    result.locations.erase(std::remove_if(result.locations.begin(), result.locations.end(),
+        [&](const Location &location) { return regexec(filter.get(), location.name.c_str(), 0, nullptr, 0) == 0; }),
+        result.locations.end());
+  }
   if (!array && !parse_spool_(body, result.spool))
     result.error = "Ungueltige Spulendaten";
   if (request.link_tag && result.error.empty()) {
@@ -361,7 +384,7 @@ void BambuddyOled::loop() {
     return;
   }
   if (result->operation == Operation::LOCATIONS) {
-    if (!state.set_locations(std::move(result->locations)))
+    if (!state.set_locations(std::move(result->locations), result->current_location_excluded))
       fail_("Ort fehlt: neu laden");
     return;
   }

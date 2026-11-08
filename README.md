@@ -118,6 +118,21 @@ send `storage_location` (the name), not a Bambuddy `location_id`. In built-in
 inventory mode the catalog remains `/api/v1/inventory/locations`, and updates
 use its location IDs.
 
+`bambuddy_oled.location_exclude_regex` optionally hides matching storage
+locations in both inventory modes. It uses a case-insensitive POSIX extended
+regular expression, searching anywhere in the location name. The supplied YAML
+uses `'(^|[ -])AMS([ -]|$)'` to exclude AMS and AMS-HT slot names, including
+names prefixed with a printer name. For example, use
+`'AMS|External Spool'` to exclude external spool slots as well. Set `''` or
+omit the option to disable filtering. Invalid patterns produce a logged/displayed
+error instead of showing an unfiltered list.
+
+Filtering only changes the selection list, not the spool's saved location or
+Bambuddy's automatic AMS assignment. If the current location is excluded, the
+empty entry is initially selected; the old location still appears in the
+confirmation screen and is changed only after confirmation. The empty entry
+is always available, even when every location is excluded.
+
 Spoolman's proxy has no `by-tag` endpoint, so NFC lookup streams the complete
 spool list, matching normalized tray UUID first and chip UID second. It includes
 archived spools, without retaining the complete inventory in memory. Only a

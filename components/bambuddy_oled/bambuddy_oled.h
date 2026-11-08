@@ -12,6 +12,7 @@ class BambuddyOled : public Component {
   void set_url(const std::string &url) { url_ = url; }
   void set_api_key(const std::string &key) { api_key_ = key; }
   void set_spoolman(bool spoolman) { spoolman_ = spoolman; }
+  void set_location_exclude_regex(const std::string &pattern) { location_exclude_regex_ = pattern; }
   void loop() override;
   void dump_config() override;
   bool request(int operation);
@@ -26,6 +27,8 @@ class BambuddyOled : public Component {
     bool spoolman;
     std::string tray_uid, card_uid;
     bool link_tag{false};
+    std::string location_exclude_regex;
+    std::string current_location;
   };
   struct Result {
     spool_reader::Operation operation;
@@ -34,6 +37,7 @@ class BambuddyOled : public Component {
     std::string error;
     spool_reader::Spool spool;
     std::vector<spool_reader::Location> locations;
+    bool current_location_excluded{false};
   };
 
   static void worker_(void *argument);
@@ -42,7 +46,7 @@ class BambuddyOled : public Component {
   static std::string body_(spool_reader::Operation operation, bool spoolman);
   void fail_(const std::string &message, bool disconnected = false);
 
-  std::string url_, api_key_;
+  std::string url_, api_key_, location_exclude_regex_;
   std::atomic<Result *> completed_{nullptr};
   bool in_flight_{false};
   bool spoolman_{false};

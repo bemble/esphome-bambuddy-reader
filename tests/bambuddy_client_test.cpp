@@ -256,5 +256,45 @@ int main() {
   finish(client);
   assert(state.locations.size() == 1 && state.selected == 0 && state.current_location(0));
 
+  client.set_location_exclude_regex("(^|[ -])AMS([ -]|$)");
+  state.found({12, 0, "PLA", "", "", "Printer - AMS A1", 625});
+  scenario(R"([{"id":1,"storage_location":"Printer - AMS A1"},{"id":2,"storage_location":"AMS-HT A1"},{"id":3,"storage_location":"printer - ams A2"},{"id":4,"storage_location":"Shelf 1"},{"id":5,"storage_location":"Ramsgate"}])");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.screen == Screen::LOCATIONS && state.locations.size() == 3 && state.selected == 0);
+  assert(state.spool.location == "Printer - AMS A1" && !state.current_location(0));
+  assert(state.locations[1].name == "Ramsgate" && state.locations[2].name == "Shelf 1");
+  state.confirm();
+  assert(state.screen == Screen::CONFIRM && state.spool.location == "Printer - AMS A1");
+
+  state.found({12, 0, "PLA", "", "", "Shelf 1", 625});
+  scenario(R"([{"id":1,"storage_location":"AMS A1"},{"id":2,"storage_location":"Shelf 1"}])");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.selected == 1 && state.current_location(1));
+  client.set_location_exclude_regex(".*");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.locations.size() == 1 && state.selected == 0);
+
+  state.found({12, 0, "PLA", "", "", "Shelf 1", 625});
+  client.set_location_exclude_regex("[");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.screen == Screen::INFO && !state.error.empty() && state.locations.empty());
+  client.set_location_exclude_regex("");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.locations.size() == 3);
+
+  client.set_spoolman(false);
+  client.set_location_exclude_regex("AMS");
+  state.found({12, 7, "PLA", "", "", "AMS A1", 625});
+  scenario(R"([{"id":7,"name":"AMS A1"},{"id":2,"name":"Shelf 1"}])");
+  assert(client.request(static_cast<int>(Operation::LOCATIONS)));
+  finish(client);
+  assert(state.locations.size() == 2 && state.selected == 0 && state.spool.location_id == 7);
+  assert(state.locations[1].name == "Shelf 1");
+
   std::cout << "Async client, cancellation, JSON and mock GET/POST/PATCH tests passed\n";
 }
