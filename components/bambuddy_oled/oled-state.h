@@ -46,6 +46,7 @@ struct State {
   int count{-1};
   uint32_t generation{0};
   std::string error;
+  std::vector<int> duplicate_ids;
 
   void home() {
     ++generation;
@@ -57,6 +58,7 @@ struct State {
     busy = false;
     create_uncertain = false;
     error.clear();
+    duplicate_ids.clear();
   }
 
   void scanned(Scan value) {
@@ -70,6 +72,7 @@ struct State {
     locations.clear();
     selected = 0;
     create_uncertain = false;
+    duplicate_ids.clear();
     screen = Screen::INFO;
   }
 

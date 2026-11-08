@@ -32,7 +32,7 @@ static void finish(BambuddyOled &client) {
   }
 }
 
-static const std::string spool = R"({"id":12,"material":"PLA","subtype":"Basic","color_name":"Blue","label_weight":750,"weight_used":125,"location_id":2,"storage_location":"Shelf 2"})";
+static const std::string spool = R"({"id":12,"material":"PLA","subtype":"Basic","color_name":"Blue","label_weight":750,"weight_used":125,"location_id":2,"storage_location":"Shelf 2","tray_uuid":"00112233445566778899AABBCCDDEEFF","tag_uid":"11223344"})";
 
 int main() {
   BambuddyOled client;
@@ -46,7 +46,7 @@ int main() {
   scan.label_weight = 750;
   state.scanned(scan);
 
-  scenario(spool, 200, true);
+  scenario("[" + spool + "]", 200, true);
   auto started = std::chrono::steady_clock::now();
   assert(client.request(static_cast<int>(Operation::LOOKUP)));
   assert(std::chrono::steady_clock::now() - started < std::chrono::milliseconds(100));
@@ -61,11 +61,12 @@ int main() {
   finish(client);
   assert(state.screen == Screen::SCAN && state.spool.id == 0 && state.scan.card_uid == "11223344");
 
-  scenario(spool);
+  scenario("[" + spool + "]");
   assert(client.request(static_cast<int>(Operation::LOOKUP)));
   finish(client);
   assert(state.screen == Screen::INFO && state.spool.id == 12 && state.spool.remaining == 625);
-  assert(server.method == HTTP_METHOD_GET && server.url.find("tray_uuid=" + scan.tray_uid) != std::string::npos);
+  assert(server.method == HTTP_METHOD_GET &&
+         server.url == "https://example.invalid/api/v1/inventory/spools?include_archived=true");
 
   scenario(R"([{"id":1}])");
   assert(client.request(static_cast<int>(Operation::LOCATIONS)));
@@ -95,7 +96,7 @@ int main() {
   assert(state.screen == Screen::CONFIRM && state.spool.id == 12 && !state.error.empty());
 
   state.scanned(scan);
-  scenario(R"({"detail":"Spool not found"})", 404);
+  scenario("[]");
   assert(client.request(static_cast<int>(Operation::LOOKUP)));
   finish(client);
   assert(state.screen == Screen::NOT_FOUND && state.connected && state.error.empty());
@@ -151,10 +152,18 @@ int main() {
   state.scanned(scan);
   const std::string tagged = R"({"id":12,"material":"PLA","label_weight":750,"weight_used":125,"location_id":null,"storage_location":null,"tray_uuid":"00112233445566778899aabbccddeeff","tag_uid":"11223344"})";
   const std::string fallback = R"({"id":5,"material":"PETG","label_weight":1000,"weight_used":0,"tag_uid":"11:22:33:44"})";
+  const std::string archived_duplicate = R"({"id":43,"material":"PLA","label_weight":750,"weight_used":125,"archived_at":"2026-01-01","tray_uuid":"00112233445566778899AABBCCDDEEFF"})";
+  scenario("[" + tagged + "," + archived_duplicate + "]");
+  assert(client.request(static_cast<int>(Operation::LOOKUP)));
+  finish(client);
+  assert(state.screen == Screen::SCAN && state.spool.id == 0 &&
+         state.duplicate_ids == std::vector<int>({12, 43}));
+  assert(!state.error.empty() && state.connected);
   scenario("[" + fallback + "," + tagged + "]");
   assert(client.request(static_cast<int>(Operation::LOOKUP)));
   finish(client);
   assert(state.spool.id == 12 && state.spool.remaining == 625);
+  assert(state.duplicate_ids.empty() && state.error.empty());
   assert(server.url == "https://example.invalid/api/v1/spoolman/inventory/spools?include_archived=true");
   scenario("[" + fallback + "]");
   state.scanned(scan);
@@ -191,7 +200,7 @@ int main() {
   assert(document["tray_uuid"].as<std::string>() == scan.tray_uid);
   assert(document["tag_uid"].as<std::string>() == scan.card_uid);
 
-  scenario(spool);
+  scenario(R"({"id":12,"material":"PLA","label_weight":750,"weight_used":125})");
   state.screen = Screen::NOT_FOUND;
   assert(client.request(static_cast<int>(Operation::CREATE)));
   finish(client);
@@ -295,6 +304,22 @@ int main() {
   finish(client);
   assert(state.locations.size() == 2 && state.selected == 0 && state.spool.location_id == 7);
   assert(state.locations[1].name == "Shelf 1");
+
+  client.set_location_exclude_regex("");
+  state.scanned(scan);
+  scenario("[" + archived_duplicate + "," + spool + "]");
+  assert(client.request(static_cast<int>(Operation::LOOKUP)));
+  finish(client);
+  assert(state.duplicate_ids == std::vector<int>({12, 43}) && state.screen == Screen::SCAN);
+  state.home();
+  assert(state.duplicate_ids.empty());
+
+  client.set_spoolman(true);
+  state.scanned(scan);
+  scenario("[" + fallback + R"(,{"id":8,"material":"PLA","label_weight":1000,"weight_used":0,"tag_uid":"11223344"})]");
+  assert(client.request(static_cast<int>(Operation::LOOKUP)));
+  finish(client);
+  assert(state.duplicate_ids == std::vector<int>({5, 8}));
 
   std::cout << "Async client, cancellation, JSON and mock GET/POST/PATCH tests passed\n";
 }

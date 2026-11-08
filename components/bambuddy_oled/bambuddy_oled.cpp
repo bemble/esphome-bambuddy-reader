@@ -106,9 +106,7 @@ bool BambuddyOled::request(int requested) {
   switch (operation) {
     case Operation::COUNT: url = base + "/spools?include_archived=true"; break;
     case Operation::LOOKUP:
-      url = spoolman_ ? base + "/spools?include_archived=true" :
-            base + "/spools/by-tag?include_archived=true&tray_uuid=" + state.scan.tray_uid +
-            "&tag_uid=" + state.scan.card_uid;
+      url = base + "/spools?include_archived=true";
       break;
     case Operation::CREATE: url = base + "/spools"; break;
     case Operation::LOCATIONS:
@@ -120,6 +118,7 @@ bool BambuddyOled::request(int requested) {
                                                  spoolman_, state.scan.tray_uid, state.scan.card_uid, false,
                                                  location_exclude_regex_, state.spool.location});
   state.error.clear();
+  state.duplicate_ids.clear();
   state.busy = true;
   in_flight_ = true;
   if (xTaskCreate(worker_, "bambuddy_http", 8192, request.get(), 1, nullptr) != pdPASS) {
@@ -214,6 +213,7 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
   }
 
   int match_rank = 0;
+  std::vector<int> matched_ids;
   ObjectArrayParser parser([&](const std::string &object) {
     JsonDocument document;
     if (deserializeJson(document, object) || !document.is<JsonObject>())
@@ -221,12 +221,21 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
     JsonObject root = document.as<JsonObject>();
     if (!root["id"].is<int>() || root["id"].as<int>() <= 0)
       return false;
-    if (request.operation == Operation::LOOKUP && request.spoolman) {
+    if (request.operation == Operation::LOOKUP) {
       const auto tray = normalized_tag(root["tray_uuid"].is<const char *>() ? root["tray_uuid"].as<std::string>() : "");
       const auto card = normalized_tag(root["tag_uid"].is<const char *>() ? root["tag_uid"].as<std::string>() : "");
       int rank = !request.tray_uid.empty() && tray == normalized_tag(request.tray_uid) ? 2 :
                  !request.card_uid.empty() && card == normalized_tag(request.card_uid) ? 1 : 0;
-      if (rank > 0 && (rank > match_rank || (rank == match_rank && root["id"].as<int>() < result.spool.id))) {
+      if (rank > match_rank) {
+        matched_ids.clear();
+        match_rank = rank;
+        result.spool = {};
+      }
+      if (rank > 0 && rank == match_rank &&
+          std::find(matched_ids.begin(), matched_ids.end(), root["id"].as<int>()) == matched_ids.end())
+        matched_ids.push_back(root["id"].as<int>());
+      if (rank > 0 && rank == match_rank &&
+          (result.spool.id == 0 || root["id"].as<int>() < result.spool.id)) {
         if (!parse_spool_(object, result.spool))
           return false;
         match_rank = rank;
@@ -251,7 +260,7 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
     return true;
   });
   const bool array = request.operation == Operation::COUNT || request.operation == Operation::LOCATIONS ||
-                     (request.operation == Operation::LOOKUP && request.spoolman);
+                     request.operation == Operation::LOOKUP;
   std::string body;
   char buffer[512];
   TickType_t last_data = xTaskGetTickCount();
@@ -283,6 +292,13 @@ void BambuddyOled::perform_(const Request &request, Result &result) {
   }
   if (array && !parser.complete()) {
     result.error = "Antwort unvollstaendig";
+    return;
+  }
+  if (matched_ids.size() > 1) {
+    std::sort(matched_ids.begin(), matched_ids.end());
+    result.duplicate_ids = std::move(matched_ids);
+    result.spool = {};
+    result.error = "NFC mehrfach verknuepft";
     return;
   }
   if (request.operation == Operation::LOCATIONS && request.spoolman)
@@ -358,13 +374,23 @@ void BambuddyOled::loop() {
   if (result->error.empty())
     state.error.clear();
   if (result->operation == Operation::LOOKUP && result->error.empty() &&
-      (result->status == 404 || (spoolman_ && result->status == 200 && result->spool.id == 0))) {
+      (result->status == 404 || (result->status == 200 && result->spool.id == 0))) {
     state.connected = true;
     state.create_uncertain = false;
     state.screen = Screen::NOT_FOUND;
     return;
   }
   if (!result->error.empty()) {
+    if (!result->duplicate_ids.empty()) {
+      state.screen = Screen::SCAN;
+      state.spool = {};
+      state.locations.clear();
+      state.duplicate_ids = std::move(result->duplicate_ids);
+      std::string ids;
+      for (int id : state.duplicate_ids)
+        ids += (ids.empty() ? "" : ", ") + std::to_string(id);
+      ESP_LOGW(TAG, "Duplicate NFC identifiers linked to spool IDs: %s", ids.c_str());
+    }
     if (result->operation == Operation::COUNT)
       state.count = -1;
     if (result->operation == Operation::CREATE) {

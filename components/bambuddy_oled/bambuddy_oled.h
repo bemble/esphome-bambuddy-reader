@@ -38,6 +38,7 @@ class BambuddyOled : public Component {
     spool_reader::Spool spool;
     std::vector<spool_reader::Location> locations;
     bool current_location_excluded{false};
+    std::vector<int> duplicate_ids;
   };
 
   static void worker_(void *argument);
