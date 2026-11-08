@@ -71,6 +71,105 @@ This selects the SPI interface on the PN532 module. Make sure to set these befor
 
 ## Software Setup
 
+### ESP32-C3 with SSD1306 and two buttons
+
+[`esphome.yaml`](esphome.yaml) is the configuration for an ESP32-C3, a
+128x64 SSD1306 I2C display, and the existing SPI NFC reader. It uses the local
+`components/bambu_nfc` component and does not require LVGL or the CST328 touch
+component. The entire OLED workflow is in `esphome.yaml`; no YAML packages
+are required. Keep only the `components` folder and your local `secrets.yaml`
+next to the YAML.
+The local `bambuddy_oled` component performs HTTP/HTTPS requests on a separate
+FreeRTOS task; display, NFC and button processing remain on ESPHome's main loop.
+The original touchscreen packages remain unchanged.
+
+Connect button 1 to **GPIO0 and GND**, and button 2 to **GPIO1 and GND**.
+Both inputs use internal pull-ups and 20 ms debouncing. Change
+`button_1_pin` / `button_2_pin` in the substitutions if needed.
+
+Add these entries to your local `secrets.yaml`:
+
+```yaml
+wifi_ssid: "YourWiFiSSID"
+wifi_password: "YourWiFiPassword"
+spool_reader_api_encryption_key: "your_32_byte_base64_key"
+bambuddy_url: "https://your-bambuddy-instance"
+```
+
+For authenticated Bambuddy installations, also add `bambuddy_api_key` to
+the secrets and change the `bambuddy_api_key` substitution from `""` to
+`!secret bambuddy_api_key`. The key needs inventory read and update permissions.
+HTTPS certificate validation stays enabled.
+The existing `api.encryption.key: ""` placeholder is left unchanged. To
+validate/flash with current ESPHome, supply a valid 32-byte Base64 key there,
+for example via `!secret spool_reader_api_encryption_key`. Automated validation
+uses a temporary random key only in the container's copy, never in your YAML.
+
+This workflow targets **Bambuddy v1.3.0's built-in inventory**, not an external
+Spoolman inventory:
+
+| Screen | Button 1 (short) | Button 1 (at least 800 ms) |
+|--------|------------------|--------------------------|
+| Home | No action | No action |
+| NFC scan | Look up spool in Bambuddy | No action |
+| Not Found, create? | Create the scanned spool | No action |
+| Bambuddy info | Load storage locations | No action |
+| Storage locations | Select next location (wraps around) | Confirm selected location |
+| Location confirmation | Save location and show returned spool info | No action |
+
+Button 2 returns home and discards the scan, spool details, and location
+selection on every screen. A tag still on the reader stays dismissed until it
+is removed and presented again. A new successful scan opens the scan screen;
+it does **not** automatically query Bambuddy.
+
+Home shows `Spool-Reader`, the device IP, the last Bambuddy connection result,
+and the total spool count (including archived spools). It refreshes when WiFi
+connects, after 5 seconds, and every 60 seconds while home is open. Scan keeps the previous
+UID/type/color/tray/date layout. Spool info shows the server's type, color,
+remaining grams (`max(0, label_weight - weight_used)`), and storage location.
+New spools use the NFC label weight rather than a fixed 1000 g; core weight
+uses Bambuddy's default because NFC does not provide the empty core weight.
+Archived spools can also be looked up, preventing accidental duplicate creation.
+
+The location list begins with `(kein Lagerort)` (an empty value), initially
+selects the current location, and scrolls through all entries in groups of
+three. Inversion highlights the selection; `*` marks the saved location.
+Long names scroll horizontally. The confirmation shows type, color, old
+location, and new location. Selecting the empty entry sends
+`{"location_id": null}` to clear the location.
+
+HTTP/authentication/JSON/NFC errors are logged and shown on the display.
+Only a lookup returning HTTP 404 offers creation. After an uncertain create
+result (e.g. timeout), button 1 performs another lookup rather than blindly
+repeating the POST. Inventory and location arrays are read one object at a
+time, so the spool count is not limited by a full-response buffer. An
+individual response object larger than 8 KiB produces an explicit error.
+Button 2 works while a request runs: returning home or scanning a new tag
+invalidates the previous request's result. A late response cannot reopen a
+dismissed screen or update a different spool's details. Only one network
+request runs at a time; starting another while the dismissed request is still
+finishing shows an explicit message and can be retried. Network reads time out
+after 10 seconds without received data. Button 2 cannot undo a write that the
+server has already accepted; the home count is refreshed after a dismissed
+request completes.
+
+Docker validation (Windows CLI, WSL engine):
+
+```powershell
+docker run --rm --mount "type=bind,source=/mnt/d/src/esphome-bambuddy-reader,target=/config" ghcr.io/esphome/esphome:latest config esphome.yaml
+docker run --rm --mount "type=bind,source=/mnt/d/src/esphome-bambuddy-reader,target=/config" ghcr.io/esphome/esphome:latest compile esphome.yaml
+docker run --rm --mount "type=bind,source=/mnt/d/src/esphome-bambuddy-reader,target=/src,readonly" gcc:14 sh -c "g++ -std=c++17 -Wall -Wextra -Werror /src/tests/oled_state_test.cpp -o /tmp/oled-tests && /tmp/oled-tests"
+docker run --rm --mount "type=bind,source=/mnt/d/src/esphome-bambuddy-reader,target=/config,readonly" --entrypoint python ghcr.io/esphome/esphome:latest /config/tests/run_bambuddy_client_tests.py
+```
+
+Replace the mount source with your checkout's WSL path. These commands
+require local secrets; never commit `secrets.yaml`.
+The client tests compile the actual component against mock ESP-IDF/FreeRTOS
+interfaces and the ArduinoJson dependency from the preceding firmware build.
+They cover non-blocking request start, dismissed/stale replies, buffered
+responses, remaining weight, large inventories, error handling and JSON
+GET/POST/PATCH behavior. Mock writes never contact a real Bambuddy instance.
+
 ### Prerequisites
 
 - [ESPHome](https://esphome.io/) installed (CLI or Home Assistant add-on)
@@ -199,6 +298,7 @@ This regenerates `bambu_colors.h` and `bambu_densities.h`. Then recompile and re
 ## Project Structure
 
 ```
+esphome.yaml              # ESP32-C3 / SSD1306 / two-button configuration
 spool-reader.yaml          # Main ESPHome config
 spool-reader/
   hw-display.yaml          # Display & touch hardware config
@@ -212,6 +312,8 @@ spool-reader/
   pages-triggers.yaml      # Page navigation triggers
 components/
   bambu_nfc/               # Custom ESPHome NFC component
+  bambuddy_oled/           # ESP-IDF HTTP worker and OLED state
+tests/                    # Navigation, streaming and mock client tests
 ```
 
 ---

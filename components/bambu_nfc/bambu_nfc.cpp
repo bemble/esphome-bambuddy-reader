@@ -170,11 +170,11 @@ void BambuNfcResetButton::press_action() {
   this->parent_->clear_sensors();
 }
 
-void BambuNfc::clear_sensors() {
+void BambuNfc::clear_sensors(bool reset_uid) {
   text_sensor::TextSensor *text_sensors[] = {
       filament_type_sensor_, filament_color_sensor_, filament_color_name_sensor_,
       filament_subtype_sensor_, tray_uid_sensor_, tray_info_idx_sensor_,
-      production_date_sensor_, last_scan_date_sensor_};
+      production_date_sensor_, last_scan_date_sensor_, variant_id_sensor_, card_uid_sensor_};
   for (auto *s : text_sensors)
     if (s) s->publish_state("unknown");
 
@@ -186,7 +186,8 @@ void BambuNfc::clear_sensors() {
   for (auto *s : num_sensors)
     if (s) s->publish_state(NAN);
 
-  this->current_uid_ = {};
+  if (reset_uid)
+    this->current_uid_ = {};
   ESP_LOGD(TAG, "Sensors cleared");
 }
 

@@ -33,7 +33,7 @@ class BambuNfc : public pn532::PN532,
   void setup() override;
   void dump_config() override;
   void loop() override;
-  void clear_sensors();
+  void clear_sensors(bool reset_uid = true);
 
   void set_filament_type_sensor(text_sensor::TextSensor *s) { filament_type_sensor_ = s; }
   void set_filament_color_sensor(text_sensor::TextSensor *s) { filament_color_sensor_ = s; }
