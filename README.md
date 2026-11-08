@@ -173,6 +173,16 @@ The `components/bambu_nfc/` directory contains the custom ESPHome component that
 - Resolving color hex codes to human-readable color names
 - Looking up material density by filament type
 
+### ESPHome 2026 API Compatibility
+
+The component uses `std::span` for writes and `pn532::MifareReadData` for
+Mifare block buffers. SPI reads use the fixed-capacity `pn532::PN532Frame`
+buffer, preserving the leading status byte and response checksum validation.
+
+The custom loop no longer dispatches the inherited PN532 `on_tag`,
+`on_tag_removed`, or NFC binary sensor callbacks. The Bambu-specific
+success and error triggers remain unchanged.
+
 ### Keeping the Bambu Database Up to Date
 
 Color names and densities are sourced from [SpoolmanDB](https://github.com/Donkie/SpoolmanDB/blob/main/filaments/bambulab.json). If a scan shows a raw hex code instead of a color name, regenerate the lookup tables:

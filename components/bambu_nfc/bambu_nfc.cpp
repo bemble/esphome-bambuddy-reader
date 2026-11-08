@@ -4,6 +4,7 @@
 
 #include <mbedtls/md.h>
 
+#include <array>
 #include <cstring>
 #include <ctime>
 #include <memory>
@@ -36,7 +37,7 @@ bool BambuNfc::is_read_ready() {
   return ready;
 }
 
-bool BambuNfc::write_data(const std::vector<uint8_t> &data) {
+bool BambuNfc::write_data(std::span<const uint8_t> data) {
   this->enable();
   delay(2);
   this->write_byte(0x01);
@@ -45,27 +46,31 @@ bool BambuNfc::write_data(const std::vector<uint8_t> &data) {
   return true;
 }
 
-bool BambuNfc::read_data(std::vector<uint8_t> &data, uint8_t len) {
+bool BambuNfc::read_data(pn532::PN532Frame &data, size_t len) {
+  if (len >= pn532::PN532_FRAME_MAX_SIZE) {
+    ESP_LOGE(TAG, "Read length %zu exceeds PN532 frame capacity", len);
+    return false;
+  }
   if (this->read_ready_(true) != pn532::PN532ReadReady::READY)
     return false;
   this->enable();
   delay(2);
   this->write_byte(0x03);
-  data.resize(len);
-  this->read_array(data.data(), len);
+  data.resize(len + 1);
+  data[0] = 0x01;
+  this->read_array(data.data() + 1, len);
   this->disable();
-  data.insert(data.begin(), 0x01);
   return true;
 }
 
-bool BambuNfc::read_response(uint8_t command, std::vector<uint8_t> &data) {
+bool BambuNfc::read_response(uint8_t command, pn532::PN532Frame &data) {
   if (this->read_ready_(true) != pn532::PN532ReadReady::READY)
     return false;
   this->enable();
   delay(2);
   this->write_byte(0x03);
-  std::vector<uint8_t> header(7);
-  this->read_array(header.data(), 7);
+  std::array<uint8_t, 7> header{};
+  this->read_array(header.data(), header.size());
   if (header[0] != 0x00 || header[1] != 0x00 || header[2] != 0xFF) {
     this->disable();
     return false;
@@ -93,7 +98,7 @@ bool BambuNfc::read_response(uint8_t command, std::vector<uint8_t> &data) {
     return false;
   if (data[len] != 0x00)
     return false;
-  data.erase(data.end() - 2, data.end());
+  data.resize(len - 1);
   return true;
 }
 
@@ -196,7 +201,7 @@ void BambuNfc::loop() {
     return;
 
   bool success = false;
-  std::vector<uint8_t> read;
+  pn532::PN532Frame read;
 
   if (ready == pn532::READY) {
     success = this->read_response(pn532::PN532_COMMAND_INLISTPASSIVETARGET, read);
@@ -206,12 +211,12 @@ void BambuNfc::loop() {
 
   this->requested_read_ = false;
 
+  if (success && read.empty()) {
+    ESP_LOGW(TAG, "Empty passive target response");
+    success = false;
+  }
+
   if (!success) {
-    if (!this->current_uid_.empty()) {
-      auto tag = make_unique<nfc::NfcTag>(this->current_uid_);
-      for (auto *trigger : this->triggers_ontagremoved_)
-        trigger->process(tag);
-    }
     this->current_uid_ = {};
     this->turn_off_rf_();
     return;
@@ -219,24 +224,25 @@ void BambuNfc::loop() {
 
   uint8_t num_targets = read[0];
   if (num_targets != 1) {
-    if (!this->current_uid_.empty()) {
-      auto tag = make_unique<nfc::NfcTag>(this->current_uid_);
-      for (auto *trigger : this->triggers_ontagremoved_)
-        trigger->process(tag);
-    }
     this->current_uid_ = {};
     this->turn_off_rf_();
     return;
   }
 
-  uint8_t nfcid_length = read[5];
-  if (nfcid_length > nfc::NFC_UID_MAX_LENGTH || read.size() < 6U + nfcid_length)
+  if (read.size() < 6) {
+    ESP_LOGW(TAG, "Truncated passive target response");
+    this->turn_off_rf_();
     return;
+  }
+
+  uint8_t nfcid_length = read[5];
+  if (nfcid_length > nfc::NFC_UID_MAX_LENGTH || read.size() < 6U + nfcid_length) {
+    ESP_LOGW(TAG, "Invalid NFC UID length: %u", nfcid_length);
+    this->turn_off_rf_();
+    return;
+  }
 
   nfc::NfcTagUid nfcid(read.begin() + 6, read.begin() + 6 + nfcid_length);
-
-  for (auto *bin_sens : this->binary_sensors_)
-    bin_sens->process(nfcid);
 
   if (nfcid.size() == this->current_uid_.size()) {
     bool same_uid = true;
@@ -272,10 +278,6 @@ void BambuNfc::loop() {
         trigger->trigger();
     }
 
-    // Fire standard on_tag triggers
-    auto tag = make_unique<nfc::NfcTag>(nfcid, nfc::MIFARE_CLASSIC);
-    for (auto *trigger : this->triggers_ontag_)
-      trigger->process(tag);
   }
 
   this->read_mode();
@@ -284,7 +286,7 @@ void BambuNfc::loop() {
 
 // ---- Bambu Data Reading ----
 
-static std::string trim_string(const std::vector<uint8_t> &data) {
+static std::string trim_string(const pn532::MifareReadData &data) {
   std::string s(data.begin(), data.end());
   size_t end = s.find_last_not_of(std::string("\0 ", 2));
   if (end == std::string::npos)
@@ -300,7 +302,7 @@ static void publish_num(sensor::Sensor *s, float val) {
   if (s != nullptr) s->publish_state(val);
 }
 
-static std::string format_hex(const std::vector<uint8_t> &data, size_t max_len = 16) {
+static std::string format_hex(std::span<const uint8_t> data, size_t max_len = 16) {
   char buf[33];
   size_t len = data.size() > max_len ? max_len : data.size();
   for (size_t i = 0; i < len; i++)
@@ -309,13 +311,13 @@ static std::string format_hex(const std::vector<uint8_t> &data, size_t max_len =
   return std::string(buf);
 }
 
-static float read_float_le(const std::vector<uint8_t> &data, size_t offset) {
+static float read_float_le(const pn532::MifareReadData &data, size_t offset) {
   float val;
   memcpy(&val, &data[offset], 4);
   return val;
 }
 
-static uint16_t read_uint16_le(const std::vector<uint8_t> &data, size_t offset) {
+static uint16_t read_uint16_le(const pn532::MifareReadData &data, size_t offset) {
   return data[offset] | (data[offset + 1] << 8);
 }
 
@@ -334,7 +336,16 @@ bool BambuNfc::read_bambu_data_(nfc::NfcTagUid &uid) {
   ESP_LOGD(TAG, "Bambu keys derived, reading tag data...");
 
   // ---- Phase 1: Read all blocks into local storage ----
-  std::vector<uint8_t> b1, b2, b4, b5, b6, b8, b9, b10, b12, b14;
+  pn532::MifareReadData b1{};
+  pn532::MifareReadData b2{};
+  pn532::MifareReadData b4{};
+  pn532::MifareReadData b5{};
+  pn532::MifareReadData b6{};
+  pn532::MifareReadData b8{};
+  pn532::MifareReadData b9{};
+  pn532::MifareReadData b10{};
+  pn532::MifareReadData b12{};
+  pn532::MifareReadData b14{};
 
   // Sector 0 (keys[0..5]): blocks 1, 2
   if (!this->auth_mifare_classic_block_(uid, 1, nfc::MIFARE_CMD_AUTH_A, &keys[0])) {
@@ -380,7 +391,7 @@ bool BambuNfc::read_bambu_data_(nfc::NfcTagUid &uid) {
 
   // ---- Phase 2: All reads OK — parse and publish atomically ----
   ESP_LOGI(TAG, "=== RAW NFC DATA ===");
-  ESP_LOGI(TAG, "card_uid: %s", format_hex(std::vector<uint8_t>(uid.begin(), uid.end())).c_str());
+  ESP_LOGI(TAG, "card_uid: %s", format_hex(std::span<const uint8_t>(uid.data(), uid.size())).c_str());
   ESP_LOGI(TAG, "b1:  %s", format_hex(b1).c_str());
   ESP_LOGI(TAG, "b2:  %s", format_hex(b2).c_str());
   ESP_LOGI(TAG, "b4:  %s", format_hex(b4).c_str());
