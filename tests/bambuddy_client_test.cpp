@@ -316,7 +316,7 @@ int main() {
 
   client.set_spoolman(true);
   state.scanned(scan);
-  scenario("[" + fallback + R"(,{"id":8,"material":"PLA","label_weight":1000,"weight_used":0,"tag_uid":"11223344"})]");
+  scenario("[" + fallback + R"(,{"id":8,"material":"PLA","label_weight":1000,"weight_used":0,"tag_uid":"11223344"}])");
   assert(client.request(static_cast<int>(Operation::LOOKUP)));
   finish(client);
   assert(state.duplicate_ids == std::vector<int>({5, 8}));
