@@ -2,6 +2,7 @@
 
 #include "oled-state.h"
 #include "esphome/core/component.h"
+#include "esphome/core/automation.h"
 
 #include <atomic>
 
@@ -17,6 +18,7 @@ class BambuddyOled : public Component {
   void dump_config() override;
   bool request(int operation);
   bool is_running() const { return in_flight_; }
+  void add_screen_callback(std::function<void(int)> callback) { screen_callbacks_.push_back(std::move(callback)); }
 
  protected:
   struct Request {
@@ -45,12 +47,24 @@ class BambuddyOled : public Component {
   static void perform_(const Request &request, Result &result);
   static bool parse_spool_(const std::string &body, spool_reader::Spool &spool);
   static std::string body_(spool_reader::Operation operation, bool spoolman);
+  void apply_result_();
   void fail_(const std::string &message, bool disconnected = false);
 
   std::string url_, api_key_, location_exclude_regex_;
   std::atomic<Result *> completed_{nullptr};
   bool in_flight_{false};
   bool spoolman_{false};
+  spool_reader::Screen last_screen_{spool_reader::Screen::HOME};
+  bool screen_initialized_{false};
+  bool last_duplicate_{false};
+  std::vector<std::function<void(int)>> screen_callbacks_;
+};
+
+class ScreenChangeTrigger : public Trigger<int> {
+ public:
+  explicit ScreenChangeTrigger(BambuddyOled *parent) {
+    parent->add_screen_callback([this](int screen) { this->trigger(screen); });
+  }
 };
 
 }  // namespace esphome::bambuddy_oled

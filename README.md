@@ -74,12 +74,14 @@ This selects the SPI interface on the PN532 module. Make sure to set these befor
 ### ESP32-C3 with SSD1306 and two buttons
 
 [`esphome.yaml`](esphome.yaml) is the configuration for an ESP32-C3, a
-128x64 SSD1306 I2C display, and the existing SPI NFC reader. It uses the local
-`components/bambu_nfc` component and does not require LVGL or the CST328 touch
+128x64 SSD1306 I2C display, and the existing SPI NFC reader. It uses the external
+`bambu_nfc`, `bambuddy_oled` and `oled_pages` components and does not require LVGL or the CST328 touch
 component. The entire OLED workflow is in `esphome.yaml`; no YAML packages
-are required. Keep only the `components` folder and your local `secrets.yaml`
-next to the YAML.
-The local `bambuddy_oled` component performs HTTP/HTTPS requests on a separate
+are required. The supplied YAML loads components from this GitHub repository;
+for unpublished local changes, replace the source with
+`source: {type: local, path: components}` and remove `refresh`.
+Keep your local `secrets.yaml` next to the YAML.
+The `bambuddy_oled` component performs HTTP/HTTPS requests on a separate
 FreeRTOS task; display, NFC and button processing remain on ESPHome's main loop.
 The original touchscreen packages remain unchanged.
 
@@ -92,17 +94,17 @@ Add these entries to your local `secrets.yaml`:
 ```yaml
 wifi_ssid: "YourWiFiSSID"
 wifi_password: "YourWiFiPassword"
-spool_reader_api_encryption_key: "your_32_byte_base64_key"
-bambuddy_url: "https://your-bambuddy-instance"
+spoolscanner__encryption_key: "your_32_byte_base64_key"
+spoolscanner__ota_password: "your_ota_password"
+spoolscanner__ap_password: "your_ap_password"
+spoolscanner__bambuddy_url: "https://your-bambuddy-instance"
+spoolscanner__bambuddy_api_key: ""
 ```
 
-For authenticated Bambuddy installations, also add `bambuddy_api_key` to
-the secrets and change the `bambuddy_api_key` substitution from `""` to
-`!secret bambuddy_api_key`. The key needs inventory read and update permissions.
+For authenticated Bambuddy installations, set `spoolscanner__bambuddy_api_key`
+to your API key. The key needs inventory read and update permissions.
 HTTPS certificate validation stays enabled.
-The existing `api.encryption.key: ""` placeholder is left unchanged. To
-validate/flash with current ESPHome, supply a valid 32-byte Base64 key there,
-for example via `!secret spool_reader_api_encryption_key`. Automated validation
+Supply a valid 32-byte Base64 encryption key in the secrets. Automated validation
 uses a temporary random key only in the container's copy, never in your YAML.
 
 This workflow supports **Bambuddy v1.3.0's Spoolman proxy and built-in inventory**.
@@ -137,6 +139,13 @@ Spoolman's proxy has no `by-tag` endpoint, so NFC lookup streams the complete
 spool list, matching normalized tray UUID first and chip UID second. It includes
 archived spools, without retaining the complete inventory in memory. Only a
 successfully parsed list with no match offers creation; errors never do.
+Both inventory modes stream all spools, including archived ones, during NFC
+lookup to detect duplicate identifiers. If the tray UUID matches several
+spools (or the chip UID matches several when no tray match exists), no spool
+is selected and creation/location editing is blocked. The OLED shows all
+matching spool IDs in a horizontally scrolling line, and logs the full list.
+Correct the links in Bambuddy/Spoolman, then press button 1 to retry; button 2
+discards the error and returns home. Archived matches are not silently ignored.
 Spoolman's extra field `tag` holds the tray UUID: Bambuddy maps its 32-digit
 hex value from `extra.tag` to `tray_uuid` in the proxy response. NFC linking
 through the proxy writes the tray UUID back to that same extra field.
@@ -155,6 +164,7 @@ it again; this avoids duplicate spools.
 |--------|------------------|--------------------------|
 | Home | No action | No action |
 | NFC scan | Look up spool in Bambuddy | No action |
+| Duplicate NFC identifier | Retry lookup after fixing links in the UI | No action |
 | Not Found, create? | Create the scanned spool | No action |
 | Bambuddy info | Load storage locations | No action |
 | Storage locations | Select next location (wraps around) | Confirm selected location |
@@ -183,8 +193,8 @@ location, and new location. Selecting the empty entry sends
 built-in inventory mode to clear the location.
 
 HTTP/authentication/JSON/NFC errors are logged and shown on the display.
-Only an unmatched successful lookup (HTTP 404 for the built-in inventory)
-offers creation. After an uncertain create
+Only a fully read, valid inventory list without an NFC match offers creation.
+After an uncertain create
 result (e.g. timeout), button 1 performs another lookup rather than blindly
 repeating the POST. Inventory and location arrays are read one object at a
 time, so the spool count is not limited by a full-response buffer. An
@@ -214,6 +224,100 @@ interfaces and the ArduinoJson dependency from the preceding firmware build.
 They cover non-blocking request start, dismissed/stale replies, buffered
 responses, remaining weight, large inventories, error handling and JSON
 GET/POST/PATCH behavior. Mock writes never contact a real Bambuddy instance.
+
+### YAML-defined OLED pages and arbitrary buttons
+
+[`components/oled_pages`](components/oled_pages) is independent of Bambuddy,
+NFC and screen enums. All seven OLED screens in `esphome.yaml`, including the
+duplicate-identifier error, define their rendering and actions here.
+`bambuddy_oled.on_screen_change` supplies an integer `screen` on the main loop
+when the backend screen or duplicate-error status changes; the YAML maps that
+event to a page. Network workers do not call display actions.
+
+```yaml
+oled_pages:
+  id: oled_ui
+  display_id: oled_display
+  font_id: font_small
+  initial_page: page_home
+  buttons:
+    - id: navigation
+      binary_sensor_id: reader_button_1
+      timings:
+        - id: short
+          timing:
+            - ON for 40ms to 799ms
+            - OFF for at least 50ms
+        - id: double
+          invalid_cooldown: 500ms
+          timing:
+            - ON for 40ms to 200ms
+            - OFF for 40ms to 200ms
+            - ON for 40ms to 200ms
+            - OFF for at least 250ms
+    - id: back
+      binary_sensor_id: reader_button_2
+      timings:
+        - id: press
+          timing:
+            - ON for at least 40ms
+  on_button:
+    - button_id: back
+      timing_id: press
+      then:
+        - oled_pages.show: page_home
+  pages:
+    - id: page_home
+      lambda: |-
+        line(0, "Spool-Reader", true);
+        line(13, "Scan a spool");
+      on_button:
+        - button_id: navigation
+          timing_id: short
+          then:
+            - oled_pages.show: page_details
+    - id: page_details
+      lambda: |-
+        line(0, "Details", true);
+```
+
+Add any number of button definitions referencing ordinary ESPHome binary
+sensors; keep GPIO pull-ups and debounce filters on those sensors.
+Button names are scoped to the manager, timing names to each button. They
+are not global ESPHome IDs. Pages and the manager use regular ESPHome IDs.
+Each timing uses native `on_multi_click` syntax, validation and execution,
+including multi-click sequences and `invalid_cooldown` (default `1s`).
+Timings are independent: overlapping patterns can both fire; choose non-overlapping
+short/double patterns if both must be distinguished.
+
+`on_button` binds a `(button_id, timing_id)` pair to a standard `then` automation.
+The active page is chosen when the timing event fires, not when the press starts.
+A page binding overrides the global binding for the same pair. Missing bindings
+do nothing; duplicate names/bindings and unknown pairs are configuration errors.
+Changing pages does not cancel automations already running.
+`oled_pages.show: page_id` changes the page and refreshes the display; it does
+not clear application data. The supplied global back binding explicitly executes
+`reader_reset` first to discard scan/spool/location data.
+
+Rendering lambdas receive `it` (the ESPHome display) and
+`line(y, text, highlight=false)`. The helper uses the configured font and display
+width, highlights with the font height, and scrolls long UTF-8 lines without
+splitting a code point. Auto-clearing is enabled by default so old screen content
+does not remain; an explicit display `auto_clear_enabled` setting is respected.
+Do not also configure a display `lambda`, native `pages`, or `show_test_card`.
+Multiple managers are supported, but each must own a different display.
+For render-only pages, omit `buttons` entirely.
+
+Run the generic router/rendering and configuration tests in Docker:
+
+```powershell
+docker run --rm --mount "type=bind,source=/mnt/d/src/esphome-bambuddy-reader,target=/config,readonly" --entrypoint python ghcr.io/esphome/esphome:latest /config/tests/run_oled_pages_tests.py
+```
+
+The tests use four buttons with short/long/double patterns, global/page overrides,
+forward page references, render-only pages, invalid configurations, typed actions,
+page clearing and UTF-8 scrolling. A font must be installed in the image or
+available from the preceding build under `/config`.
 
 ### Prerequisites
 

@@ -20,6 +20,19 @@ class Component {
   virtual ~Component() = default;
   virtual void loop() {}
   virtual void dump_config() {}
+  virtual void setup() {}
+};
+template<typename... Ts> class Trigger {
+ public:
+  void add_callback(std::function<void(Ts...)> callback) { callbacks_.push_back(std::move(callback)); }
+  void trigger(Ts... args) { for (const auto &callback : callbacks_) callback(args...); }
+ protected:
+  std::vector<std::function<void(Ts...)>> callbacks_;
+};
+template<typename... Ts> class Action {
+ public:
+  virtual ~Action() = default;
+  virtual void play(const Ts &...args) = 0;
 };
 namespace json {
 inline std::string build_json(const std::function<void(JsonObject)> &builder) {

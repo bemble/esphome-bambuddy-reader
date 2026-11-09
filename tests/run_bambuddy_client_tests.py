@@ -13,6 +13,7 @@ with tempfile.TemporaryDirectory() as directory:
     temporary = pathlib.Path(directory)
     for header in [
         "esphome/core/component.h",
+        "esphome/core/automation.h",
         "esphome/core/log.h",
         "esphome/components/json/json_util.h",
         "esp_crt_bundle.h",

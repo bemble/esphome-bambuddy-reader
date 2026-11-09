@@ -38,6 +38,21 @@ int main() {
   BambuddyOled client;
   client.set_url("https://example.invalid/");
   client.set_api_key("test");
+  std::vector<int> screens;
+  esphome::bambuddy_oled::ScreenChangeTrigger screen_trigger(&client);
+  screen_trigger.add_callback([&](int screen) { screens.push_back(screen); });
+  state.home();
+  client.loop();
+  client.loop();
+  assert((screens == std::vector<int>{static_cast<int>(Screen::HOME)}));
+  state.screen = Screen::SCAN;
+  client.loop();
+  state.duplicate_ids = {1, 2};
+  client.loop();
+  state.duplicate_ids.clear();
+  client.loop();
+  assert((screens == std::vector<int>{0, 1, 1, 1}));
+  state.home();
   Scan scan;
   scan.card_uid = "AABBCCDD";
   scan.tray_uid = "00112233445566778899AABBCCDDEEFF";
@@ -65,6 +80,7 @@ int main() {
   assert(client.request(static_cast<int>(Operation::LOOKUP)));
   finish(client);
   assert(state.screen == Screen::INFO && state.spool.id == 12 && state.spool.remaining == 625);
+  assert(screens.back() == static_cast<int>(Screen::INFO));
   assert(server.method == HTTP_METHOD_GET &&
          server.url == "https://example.invalid/api/v1/inventory/spools?include_archived=true");
 

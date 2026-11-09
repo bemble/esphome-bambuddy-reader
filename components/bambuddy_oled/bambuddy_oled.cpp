@@ -357,6 +357,18 @@ void BambuddyOled::worker_(void *argument) {
 }
 
 void BambuddyOled::loop() {
+  apply_result_();
+  // Notify on the main loop, including changes from NFC and YAML actions.
+  if (!screen_initialized_ || last_screen_ != state.screen || last_duplicate_ != !state.duplicate_ids.empty()) {
+    screen_initialized_ = true;
+    last_screen_ = state.screen;
+    last_duplicate_ = !state.duplicate_ids.empty();
+    for (const auto &callback : screen_callbacks_)
+      callback(static_cast<int>(last_screen_));
+  }
+}
+
+void BambuddyOled::apply_result_() {
   std::unique_ptr<Result> result(completed_.exchange(nullptr, std::memory_order_acquire));
   if (!result)
     return;
